@@ -92,6 +92,18 @@ def _init_sqlite():
                 chat_id     INTEGER NOT NULL
             )
         """)
+        conn.execute("""
+            CREATE TABLE IF NOT EXISTS tournament_matches (
+                id          INTEGER PRIMARY KEY AUTOINCREMENT,
+                chat_id     INTEGER NOT NULL,
+                match_order INTEGER NOT NULL,
+                team1_name  TEXT    NOT NULL,
+                team2_name  TEXT    NOT NULL,
+                team1_score INTEGER DEFAULT NULL,
+                team2_score INTEGER DEFAULT NULL,
+                played      INTEGER NOT NULL DEFAULT 0
+            )
+        """)
 
 
 def _init_pg():
@@ -126,6 +138,18 @@ def _init_pg():
                     duration    INTEGER NOT NULL,
                     half_number INTEGER NOT NULL DEFAULT 1,
                     chat_id     BIGINT  NOT NULL
+                )
+            """)
+            cur.execute("""
+                CREATE TABLE IF NOT EXISTS tournament_matches (
+                    id          SERIAL PRIMARY KEY,
+                    chat_id     BIGINT  NOT NULL,
+                    match_order INTEGER NOT NULL,
+                    team1_name  TEXT    NOT NULL,
+                    team2_name  TEXT    NOT NULL,
+                    team1_score INTEGER DEFAULT NULL,
+                    team2_score INTEGER DEFAULT NULL,
+                    played      INTEGER NOT NULL DEFAULT 0
                 )
             """)
     conn.close()
@@ -349,5 +373,94 @@ def save_match(duration: int, chat_id: int, half_number: int = 1) -> int:
                     (duration, chat_id, half_number),
                 )
                 return cur.lastrowid
+    finally:
+        conn.close()
+
+
+# ── Tournament matches ────────────────────────────────────────────────────────
+
+def save_tournament(matches: list[dict], chat_id: int):
+    ph = _ph()
+    conn = get_connection()
+    try:
+        with conn:
+            if _is_pg():
+                with conn.cursor() as cur:
+                    cur.execute(f"DELETE FROM tournament_matches WHERE chat_id = {ph}", (chat_id,))
+                    for m in matches:
+                        cur.execute(
+                            f"INSERT INTO tournament_matches "
+                            f"(chat_id, match_order, team1_name, team2_name) "
+                            f"VALUES ({ph}, {ph}, {ph}, {ph})",
+                            (chat_id, m["match_order"], m["team1_name"], m["team2_name"]),
+                        )
+            else:
+                conn.execute(f"DELETE FROM tournament_matches WHERE chat_id = {ph}", (chat_id,))
+                for m in matches:
+                    conn.execute(
+                        f"INSERT INTO tournament_matches "
+                        f"(chat_id, match_order, team1_name, team2_name) "
+                        f"VALUES ({ph}, {ph}, {ph}, {ph})",
+                        (chat_id, m["match_order"], m["team1_name"], m["team2_name"]),
+                    )
+    finally:
+        conn.close()
+
+
+def get_tournament(chat_id: int) -> list[dict]:
+    ph = _ph()
+    conn = get_connection()
+    try:
+        if _is_pg():
+            with conn.cursor() as cur:
+                cur.execute(
+                    f"SELECT * FROM tournament_matches WHERE chat_id = {ph} ORDER BY match_order",
+                    (chat_id,),
+                )
+                return [dict(r) for r in cur.fetchall()]
+        else:
+            rows = conn.execute(
+                f"SELECT * FROM tournament_matches WHERE chat_id = {ph} ORDER BY match_order",
+                (chat_id,),
+            ).fetchall()
+            return [dict(r) for r in rows]
+    finally:
+        conn.close()
+
+
+def update_match_score(match_id: int, team1_score: int, team2_score: int, chat_id: int) -> bool:
+    ph = _ph()
+    conn = get_connection()
+    try:
+        with conn:
+            if _is_pg():
+                with conn.cursor() as cur:
+                    cur.execute(
+                        f"UPDATE tournament_matches SET team1_score={ph}, team2_score={ph}, played=1 "
+                        f"WHERE id={ph} AND chat_id={ph}",
+                        (team1_score, team2_score, match_id, chat_id),
+                    )
+                    return cur.rowcount > 0
+            else:
+                cur = conn.execute(
+                    f"UPDATE tournament_matches SET team1_score={ph}, team2_score={ph}, played=1 "
+                    f"WHERE id={ph} AND chat_id={ph}",
+                    (team1_score, team2_score, match_id, chat_id),
+                )
+                return cur.rowcount > 0
+    finally:
+        conn.close()
+
+
+def delete_tournament(chat_id: int):
+    ph = _ph()
+    conn = get_connection()
+    try:
+        with conn:
+            if _is_pg():
+                with conn.cursor() as cur:
+                    cur.execute(f"DELETE FROM tournament_matches WHERE chat_id = {ph}", (chat_id,))
+            else:
+                conn.execute(f"DELETE FROM tournament_matches WHERE chat_id = {ph}", (chat_id,))
     finally:
         conn.close()

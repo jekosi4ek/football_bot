@@ -87,13 +87,18 @@ def extract_player_name(text: str) -> str | None:
     return name.title() if name else None
 
 
-async def process_voice_message(bot, file_id: str) -> str | None:
-    """Full pipeline: download → convert → transcribe → extract name."""
+async def process_voice_raw(bot, file_id: str) -> str | None:
+    """Download → convert → transcribe. Returns raw transcribed text or None."""
     try:
         ogg_bytes = await download_voice(bot, file_id)
         wav_bytes = ogg_to_wav(ogg_bytes)
-        text = transcribe_wav(wav_bytes)
-        return extract_player_name(text)
+        return transcribe_wav(wav_bytes)
     except Exception as e:
         logger.error("Voice processing failed: %s", e)
         return None
+
+
+async def process_voice_message(bot, file_id: str) -> str | None:
+    """Full pipeline: download → convert → transcribe → extract name."""
+    text = await process_voice_raw(bot, file_id)
+    return extract_player_name(text)

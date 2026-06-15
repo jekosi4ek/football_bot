@@ -32,6 +32,8 @@ from handlers.match import (
     resume_timer_handler,
     stop_match_handler,
 )
+from handlers.session import game_handler
+from handlers.tournament import tournament_handler, score_handler, show_tournament_handler
 from handlers.voice import voice_message_handler
 from handlers.callbacks import callback_handler
 
@@ -59,10 +61,18 @@ def main():
     app.add_handler(CommandHandler("remove_player", remove_player_handler))
     app.add_handler(CommandHandler("set_strength",  set_strength_handler))
 
+    # ── Session commands ──────────────────────────────────────────────────────
+    app.add_handler(CommandHandler("game",           game_handler))
+
     # ── Team commands ─────────────────────────────────────────────────────────
     app.add_handler(CommandHandler("create_team",   create_team_handler))
     app.add_handler(CommandHandler("auto_divide",   auto_divide_handler))
     app.add_handler(CommandHandler("show_teams",    show_teams_handler))
+
+    # ── Tournament commands ───────────────────────────────────────────────────
+    app.add_handler(CommandHandler("tournament",      tournament_handler))
+    app.add_handler(CommandHandler("show_tournament", show_tournament_handler))
+    app.add_handler(CommandHandler("score",           score_handler))
 
     # ── Match / timer commands ────────────────────────────────────────────────
     app.add_handler(CommandHandler("start_match",   start_match_handler))

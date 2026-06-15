@@ -12,11 +12,15 @@ def main_menu_keyboard() -> InlineKeyboardMarkup:
             InlineKeyboardButton("❌ Видалити гравця", callback_data="menu_remove_player"),
         ],
         [
+            InlineKeyboardButton("🎮 Хто грає сьогодні", callback_data="menu_game_session"),
+        ],
+        [
             InlineKeyboardButton("⚽ Авторозподіл",   callback_data="menu_auto_divide"),
             InlineKeyboardButton("👥 Команди",         callback_data="menu_show_teams"),
         ],
         [
-            InlineKeyboardButton("⏱ Почати матч",     callback_data="menu_start_match"),
+            InlineKeyboardButton("🏆 Турнір",          callback_data="menu_tournament"),
+            InlineKeyboardButton("⏱ Таймер",           callback_data="menu_start_match"),
         ],
     ])
 
@@ -24,9 +28,9 @@ def main_menu_keyboard() -> InlineKeyboardMarkup:
 def strength_keyboard(player_id: int) -> InlineKeyboardMarkup:
     return InlineKeyboardMarkup([
         [
-            InlineKeyboardButton("⭐ Слабкий (1)",    callback_data=f"strength_{player_id}_1"),
-            InlineKeyboardButton("⭐⭐ Середній (2)", callback_data=f"strength_{player_id}_2"),
-            InlineKeyboardButton("⭐⭐⭐ Сильний (3)",callback_data=f"strength_{player_id}_3"),
+            InlineKeyboardButton("⭐ Слабкий (1)",     callback_data=f"strength_{player_id}_1"),
+            InlineKeyboardButton("⭐⭐ Середній (2)",  callback_data=f"strength_{player_id}_2"),
+            InlineKeyboardButton("⭐⭐⭐ Сильний (3)", callback_data=f"strength_{player_id}_3"),
         ],
         [InlineKeyboardButton("🔙 Назад", callback_data="menu_set_strength")],
     ])
@@ -36,12 +40,10 @@ def players_remove_keyboard(players: list[dict]) -> InlineKeyboardMarkup:
     rows = []
     for p in players:
         stars = "⭐" * p["strength"]
-        rows.append([
-            InlineKeyboardButton(
-                f"❌ {p['name']} {stars}",
-                callback_data=f"remove_{p['id']}",
-            )
-        ])
+        rows.append([InlineKeyboardButton(
+            f"❌ {p['name']} {stars}",
+            callback_data=f"remove_{p['id']}",
+        )])
     rows.append([InlineKeyboardButton("🔙 Головне меню", callback_data="back_main")])
     return InlineKeyboardMarkup(rows)
 
@@ -50,12 +52,10 @@ def players_strength_keyboard(players: list[dict]) -> InlineKeyboardMarkup:
     rows = []
     for p in players:
         stars = "⭐" * p["strength"]
-        rows.append([
-            InlineKeyboardButton(
-                f"{p['name']} {stars}",
-                callback_data=f"edit_strength_{p['id']}",
-            )
-        ])
+        rows.append([InlineKeyboardButton(
+            f"{p['name']} {stars}",
+            callback_data=f"edit_strength_{p['id']}",
+        )])
     rows.append([InlineKeyboardButton("🔙 Головне меню", callback_data="back_main")])
     return InlineKeyboardMarkup(rows)
 
@@ -77,21 +77,17 @@ def match_duration_keyboard() -> InlineKeyboardMarkup:
 
 
 def timer_running_keyboard() -> InlineKeyboardMarkup:
-    return InlineKeyboardMarkup([
-        [
-            InlineKeyboardButton("⏸ Пауза",    callback_data="timer_pause"),
-            InlineKeyboardButton("⏹ Зупинити", callback_data="timer_stop"),
-        ]
-    ])
+    return InlineKeyboardMarkup([[
+        InlineKeyboardButton("⏸ Пауза",    callback_data="timer_pause"),
+        InlineKeyboardButton("⏹ Зупинити", callback_data="timer_stop"),
+    ]])
 
 
 def timer_paused_keyboard() -> InlineKeyboardMarkup:
-    return InlineKeyboardMarkup([
-        [
-            InlineKeyboardButton("▶️ Продовжити", callback_data="timer_resume"),
-            InlineKeyboardButton("⏹ Зупинити",   callback_data="timer_stop"),
-        ]
-    ])
+    return InlineKeyboardMarkup([[
+        InlineKeyboardButton("▶️ Продовжити", callback_data="timer_resume"),
+        InlineKeyboardButton("⏹ Зупинити",   callback_data="timer_stop"),
+    ]])
 
 
 def teams_count_keyboard() -> InlineKeyboardMarkup:
@@ -102,4 +98,13 @@ def teams_count_keyboard() -> InlineKeyboardMarkup:
             InlineKeyboardButton("4 команди", callback_data="teams_4"),
         ],
         [InlineKeyboardButton("🔙 Скасувати", callback_data="back_main")],
+    ])
+
+
+def after_divide_keyboard() -> InlineKeyboardMarkup:
+    """Shown after auto-divide — offers tournament and timer."""
+    return InlineKeyboardMarkup([
+        [InlineKeyboardButton("🏆 Створити турнір", callback_data="menu_tournament")],
+        [InlineKeyboardButton("⏱ Почати таймер",    callback_data="menu_start_match")],
+        [InlineKeyboardButton("🔙 Головне меню",     callback_data="back_main")],
     ])
