@@ -1,36 +1,86 @@
-import sqlite3
+"""
+Database layer — supports both PostgreSQL (Railway) and SQLite (local dev).
+
+Detection: if DATABASE_URL env var is set → PostgreSQL via psycopg2.
+           Otherwise                       → SQLite via sqlite3.
+
+The public API (add_player, get_players, …) is identical for both backends.
+All queries use {ph} as the placeholder token and are formatted at call time.
+"""
+
 import json
 import logging
-from config import DATABASE_PATH
+import os
 
 logger = logging.getLogger(__name__)
 
+DATABASE_URL: str | None = os.getenv("DATABASE_URL")   # set automatically by Railway Postgres plugin
+DATABASE_PATH: str = os.getenv("DATABASE_PATH", "football.db")
 
-def get_connection() -> sqlite3.Connection:
-    conn = sqlite3.connect(DATABASE_PATH)
-    conn.row_factory = sqlite3.Row
-    return conn
 
+# ── Connection factory ────────────────────────────────────────────────────────
+
+def _is_pg() -> bool:
+    return bool(DATABASE_URL)
+
+
+def _ph() -> str:
+    """SQL placeholder token."""
+    return "%s" if _is_pg() else "?"
+
+
+def get_connection():
+    if _is_pg():
+        import psycopg2
+        import psycopg2.extras
+        conn = psycopg2.connect(DATABASE_URL, cursor_factory=psycopg2.extras.RealDictCursor)
+        return conn
+    else:
+        import sqlite3
+        conn = sqlite3.connect(DATABASE_PATH)
+        conn.row_factory = sqlite3.Row
+        return conn
+
+
+def _row(row) -> dict | None:
+    """Normalise a DB row to a plain dict regardless of backend."""
+    if row is None:
+        return None
+    return dict(row)
+
+
+# ── Schema ────────────────────────────────────────────────────────────────────
 
 def init_db():
-    with get_connection() as conn:
+    if _is_pg():
+        _init_pg()
+    else:
+        _init_sqlite()
+    logger.info("Database initialised (%s)", "PostgreSQL" if _is_pg() else "SQLite")
+
+
+def _init_sqlite():
+    import sqlite3
+    conn = sqlite3.connect(DATABASE_PATH)
+    conn.row_factory = sqlite3.Row
+    with conn:
         conn.execute("""
             CREATE TABLE IF NOT EXISTS players (
-                id          INTEGER PRIMARY KEY AUTOINCREMENT,
-                name        TEXT    NOT NULL,
-                strength    INTEGER NOT NULL DEFAULT 2
-                                    CHECK(strength BETWEEN 1 AND 3),
-                chat_id     INTEGER NOT NULL,
-                created_at  TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+                id         INTEGER PRIMARY KEY AUTOINCREMENT,
+                name       TEXT    NOT NULL,
+                strength   INTEGER NOT NULL DEFAULT 2
+                                   CHECK(strength BETWEEN 1 AND 3),
+                chat_id    INTEGER NOT NULL,
+                created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
             )
         """)
         conn.execute("""
             CREATE TABLE IF NOT EXISTS teams (
-                id          INTEGER PRIMARY KEY AUTOINCREMENT,
-                name        TEXT    NOT NULL,
-                player_ids  TEXT    NOT NULL DEFAULT '[]',
-                chat_id     INTEGER NOT NULL,
-                created_at  TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+                id         INTEGER PRIMARY KEY AUTOINCREMENT,
+                name       TEXT    NOT NULL,
+                player_ids TEXT    NOT NULL DEFAULT '[]',
+                chat_id    INTEGER NOT NULL,
+                created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
             )
         """)
         conn.execute("""
@@ -42,109 +92,262 @@ def init_db():
                 chat_id     INTEGER NOT NULL
             )
         """)
-        conn.commit()
-    logger.info("Database initialized")
+
+
+def _init_pg():
+    import psycopg2
+    import psycopg2.extras
+    conn = psycopg2.connect(DATABASE_URL, cursor_factory=psycopg2.extras.RealDictCursor)
+    with conn:
+        with conn.cursor() as cur:
+            cur.execute("""
+                CREATE TABLE IF NOT EXISTS players (
+                    id         SERIAL PRIMARY KEY,
+                    name       TEXT    NOT NULL,
+                    strength   INTEGER NOT NULL DEFAULT 2
+                                       CHECK(strength BETWEEN 1 AND 3),
+                    chat_id    BIGINT  NOT NULL,
+                    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+                )
+            """)
+            cur.execute("""
+                CREATE TABLE IF NOT EXISTS teams (
+                    id         SERIAL PRIMARY KEY,
+                    name       TEXT    NOT NULL,
+                    player_ids TEXT    NOT NULL DEFAULT '[]',
+                    chat_id    BIGINT  NOT NULL,
+                    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+                )
+            """)
+            cur.execute("""
+                CREATE TABLE IF NOT EXISTS matches (
+                    id          SERIAL PRIMARY KEY,
+                    start_time  TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                    duration    INTEGER NOT NULL,
+                    half_number INTEGER NOT NULL DEFAULT 1,
+                    chat_id     BIGINT  NOT NULL
+                )
+            """)
+    conn.close()
 
 
 # ── Players ───────────────────────────────────────────────────────────────────
 
 def add_player(name: str, chat_id: int, strength: int = 2) -> int:
-    with get_connection() as conn:
-        cur = conn.execute(
-            "INSERT INTO players (name, strength, chat_id) VALUES (?, ?, ?)",
-            (name.strip(), strength, chat_id),
-        )
-        conn.commit()
-        return cur.lastrowid
+    ph = _ph()
+    conn = get_connection()
+    try:
+        with conn:
+            cur = conn.cursor() if _is_pg() else conn
+            if _is_pg():
+                cur.execute(
+                    f"INSERT INTO players (name, strength, chat_id) VALUES ({ph}, {ph}, {ph}) RETURNING id",
+                    (name.strip(), strength, chat_id),
+                )
+                return cur.fetchone()["id"]
+            else:
+                c = conn.execute(
+                    f"INSERT INTO players (name, strength, chat_id) VALUES ({ph}, {ph}, {ph})",
+                    (name.strip(), strength, chat_id),
+                )
+                return c.lastrowid
+    finally:
+        conn.close()
 
 
 def get_players(chat_id: int) -> list[dict]:
-    with get_connection() as conn:
-        rows = conn.execute(
-            "SELECT * FROM players WHERE chat_id = ? ORDER BY name COLLATE NOCASE",
-            (chat_id,),
-        ).fetchall()
-        return [dict(r) for r in rows]
+    ph = _ph()
+    conn = get_connection()
+    try:
+        if _is_pg():
+            with conn.cursor() as cur:
+                cur.execute(
+                    f"SELECT * FROM players WHERE chat_id = {ph} ORDER BY name",
+                    (chat_id,),
+                )
+                return [dict(r) for r in cur.fetchall()]
+        else:
+            rows = conn.execute(
+                f"SELECT * FROM players WHERE chat_id = {ph} ORDER BY name COLLATE NOCASE",
+                (chat_id,),
+            ).fetchall()
+            return [dict(r) for r in rows]
+    finally:
+        conn.close()
 
 
 def get_player(player_id: int, chat_id: int) -> dict | None:
-    with get_connection() as conn:
-        row = conn.execute(
-            "SELECT * FROM players WHERE id = ? AND chat_id = ?",
-            (player_id, chat_id),
-        ).fetchone()
-        return dict(row) if row else None
+    ph = _ph()
+    conn = get_connection()
+    try:
+        if _is_pg():
+            with conn.cursor() as cur:
+                cur.execute(
+                    f"SELECT * FROM players WHERE id = {ph} AND chat_id = {ph}",
+                    (player_id, chat_id),
+                )
+                return _row(cur.fetchone())
+        else:
+            row = conn.execute(
+                f"SELECT * FROM players WHERE id = {ph} AND chat_id = {ph}",
+                (player_id, chat_id),
+            ).fetchone()
+            return _row(row)
+    finally:
+        conn.close()
 
 
 def player_exists(name: str, chat_id: int) -> bool:
-    with get_connection() as conn:
-        row = conn.execute(
-            "SELECT 1 FROM players WHERE LOWER(name) = LOWER(?) AND chat_id = ?",
-            (name.strip(), chat_id),
-        ).fetchone()
-        return row is not None
+    ph = _ph()
+    conn = get_connection()
+    try:
+        if _is_pg():
+            with conn.cursor() as cur:
+                cur.execute(
+                    f"SELECT 1 FROM players WHERE LOWER(name) = LOWER({ph}) AND chat_id = {ph}",
+                    (name.strip(), chat_id),
+                )
+                return cur.fetchone() is not None
+        else:
+            row = conn.execute(
+                f"SELECT 1 FROM players WHERE LOWER(name) = LOWER({ph}) AND chat_id = {ph}",
+                (name.strip(), chat_id),
+            ).fetchone()
+            return row is not None
+    finally:
+        conn.close()
 
 
 def remove_player(player_id: int, chat_id: int) -> bool:
-    with get_connection() as conn:
-        cur = conn.execute(
-            "DELETE FROM players WHERE id = ? AND chat_id = ?",
-            (player_id, chat_id),
-        )
-        conn.commit()
-        return cur.rowcount > 0
+    ph = _ph()
+    conn = get_connection()
+    try:
+        with conn:
+            if _is_pg():
+                with conn.cursor() as cur:
+                    cur.execute(
+                        f"DELETE FROM players WHERE id = {ph} AND chat_id = {ph}",
+                        (player_id, chat_id),
+                    )
+                    return cur.rowcount > 0
+            else:
+                cur = conn.execute(
+                    f"DELETE FROM players WHERE id = {ph} AND chat_id = {ph}",
+                    (player_id, chat_id),
+                )
+                return cur.rowcount > 0
+    finally:
+        conn.close()
 
 
 def update_player_strength(player_id: int, strength: int, chat_id: int) -> bool:
-    with get_connection() as conn:
-        cur = conn.execute(
-            "UPDATE players SET strength = ? WHERE id = ? AND chat_id = ?",
-            (strength, player_id, chat_id),
-        )
-        conn.commit()
-        return cur.rowcount > 0
+    ph = _ph()
+    conn = get_connection()
+    try:
+        with conn:
+            if _is_pg():
+                with conn.cursor() as cur:
+                    cur.execute(
+                        f"UPDATE players SET strength = {ph} WHERE id = {ph} AND chat_id = {ph}",
+                        (strength, player_id, chat_id),
+                    )
+                    return cur.rowcount > 0
+            else:
+                cur = conn.execute(
+                    f"UPDATE players SET strength = {ph} WHERE id = {ph} AND chat_id = {ph}",
+                    (strength, player_id, chat_id),
+                )
+                return cur.rowcount > 0
+    finally:
+        conn.close()
 
 
 # ── Teams ─────────────────────────────────────────────────────────────────────
 
 def save_teams(teams: list[dict], chat_id: int):
-    with get_connection() as conn:
-        conn.execute("DELETE FROM teams WHERE chat_id = ?", (chat_id,))
-        for team in teams:
-            conn.execute(
-                "INSERT INTO teams (name, player_ids, chat_id) VALUES (?, ?, ?)",
-                (team["name"], json.dumps(team["player_ids"]), chat_id),
-            )
-        conn.commit()
+    ph = _ph()
+    conn = get_connection()
+    try:
+        with conn:
+            if _is_pg():
+                with conn.cursor() as cur:
+                    cur.execute(f"DELETE FROM teams WHERE chat_id = {ph}", (chat_id,))
+                    for team in teams:
+                        cur.execute(
+                            f"INSERT INTO teams (name, player_ids, chat_id) VALUES ({ph}, {ph}, {ph})",
+                            (team["name"], json.dumps(team["player_ids"]), chat_id),
+                        )
+            else:
+                conn.execute(f"DELETE FROM teams WHERE chat_id = {ph}", (chat_id,))
+                for team in teams:
+                    conn.execute(
+                        f"INSERT INTO teams (name, player_ids, chat_id) VALUES ({ph}, {ph}, {ph})",
+                        (team["name"], json.dumps(team["player_ids"]), chat_id),
+                    )
+    finally:
+        conn.close()
 
 
 def get_teams(chat_id: int) -> list[dict]:
-    with get_connection() as conn:
-        rows = conn.execute(
-            "SELECT * FROM teams WHERE chat_id = ? ORDER BY name",
-            (chat_id,),
-        ).fetchall()
+    ph = _ph()
+    conn = get_connection()
+    try:
+        if _is_pg():
+            with conn.cursor() as cur:
+                cur.execute(
+                    f"SELECT * FROM teams WHERE chat_id = {ph} ORDER BY name",
+                    (chat_id,),
+                )
+                rows = cur.fetchall()
+        else:
+            rows = conn.execute(
+                f"SELECT * FROM teams WHERE chat_id = {ph} ORDER BY name",
+                (chat_id,),
+            ).fetchall()
+
         result = []
         for row in rows:
             t = dict(row)
             t["player_ids"] = json.loads(t["player_ids"])
             result.append(t)
         return result
+    finally:
+        conn.close()
 
 
 def delete_teams(chat_id: int):
-    with get_connection() as conn:
-        conn.execute("DELETE FROM teams WHERE chat_id = ?", (chat_id,))
-        conn.commit()
+    ph = _ph()
+    conn = get_connection()
+    try:
+        with conn:
+            if _is_pg():
+                with conn.cursor() as cur:
+                    cur.execute(f"DELETE FROM teams WHERE chat_id = {ph}", (chat_id,))
+            else:
+                conn.execute(f"DELETE FROM teams WHERE chat_id = {ph}", (chat_id,))
+    finally:
+        conn.close()
 
 
 # ── Matches ───────────────────────────────────────────────────────────────────
 
 def save_match(duration: int, chat_id: int, half_number: int = 1) -> int:
-    with get_connection() as conn:
-        cur = conn.execute(
-            "INSERT INTO matches (duration, chat_id, half_number) VALUES (?, ?, ?)",
-            (duration, chat_id, half_number),
-        )
-        conn.commit()
-        return cur.lastrowid
+    ph = _ph()
+    conn = get_connection()
+    try:
+        with conn:
+            if _is_pg():
+                with conn.cursor() as cur:
+                    cur.execute(
+                        f"INSERT INTO matches (duration, chat_id, half_number) VALUES ({ph}, {ph}, {ph}) RETURNING id",
+                        (duration, chat_id, half_number),
+                    )
+                    return cur.fetchone()["id"]
+            else:
+                cur = conn.execute(
+                    f"INSERT INTO matches (duration, chat_id, half_number) VALUES ({ph}, {ph}, {ph})",
+                    (duration, chat_id, half_number),
+                )
+                return cur.lastrowid
+    finally:
+        conn.close()
