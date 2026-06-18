@@ -4,8 +4,8 @@ from telegram.ext import ContextTypes
 
 import database as db
 from handlers.session import get_session_players
-from services.team_divider import divide_players, format_teams_message
-from utils.keyboards import main_menu_keyboard, teams_count_keyboard, after_divide_keyboard
+from services.team_divider import divide_players, format_teams_message, _md
+from utils.keyboards import main_menu_keyboard, teams_count_keyboard, after_divide_keyboard, teams_action_keyboard
 
 logger = logging.getLogger(__name__)
 
@@ -90,4 +90,35 @@ async def show_teams_handler(update: Update, context: ContextTypes.DEFAULT_TYPE)
         return
 
     msg = format_teams_message(teams, players)
-    await update.message.reply_text(msg, parse_mode="Markdown", reply_markup=main_menu_keyboard())
+    await update.message.reply_text(msg, parse_mode="Markdown", reply_markup=teams_action_keyboard())
+
+
+async def pending_rename_text_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    chat_id = update.effective_chat.id
+    old_name = context.chat_data.get("waiting_rename")
+    if not old_name:
+        return
+
+    new_name = update.message.text.strip()
+    if not new_name or len(new_name) > 30:
+        await update.message.reply_text("⚠️ Назва має бути 1–30 символів. Спробуйте ще:")
+        return
+
+    del context.chat_data["waiting_rename"]
+    db.rename_team(chat_id, old_name, new_name)
+
+    teams = db.get_teams(chat_id)
+    players = db.get_players(chat_id)
+    msg = format_teams_message(teams, players)
+    await update.message.reply_text(
+        f"✅ *{_md(old_name)}* → *{_md(new_name)}*\n\n{msg}",
+        parse_mode="Markdown",
+        reply_markup=teams_action_keyboard(),
+    )
+
+
+async def cancel_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    if context.chat_data.pop("waiting_rename", None):
+        await update.message.reply_text("❌ Перейменування скасовано.", reply_markup=main_menu_keyboard())
+    else:
+        await update.message.reply_text("Немає активних операцій.", reply_markup=main_menu_keyboard())

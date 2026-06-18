@@ -25,6 +25,8 @@ from handlers.teams import (
     create_team_handler,
     auto_divide_handler,
     show_teams_handler,
+    pending_rename_text_handler,
+    cancel_handler,
 )
 from handlers.match import (
     start_match_handler,
@@ -68,6 +70,7 @@ def main():
     app.add_handler(CommandHandler("create_team",   create_team_handler))
     app.add_handler(CommandHandler("auto_divide",   auto_divide_handler))
     app.add_handler(CommandHandler("show_teams",    show_teams_handler))
+    app.add_handler(CommandHandler("cancel",        cancel_handler))
 
     # ── Tournament commands ───────────────────────────────────────────────────
     app.add_handler(CommandHandler("tournament",      tournament_handler))
@@ -82,6 +85,9 @@ def main():
 
     # ── Voice messages ────────────────────────────────────────────────────────
     app.add_handler(MessageHandler(filters.VOICE, voice_message_handler))
+
+    # ── Text input (e.g. team rename) ────────────────────────────────────────
+    app.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, pending_rename_text_handler))
 
     # ── Inline keyboard callbacks ─────────────────────────────────────────────
     app.add_handler(CallbackQueryHandler(callback_handler))

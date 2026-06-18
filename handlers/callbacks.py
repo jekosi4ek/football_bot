@@ -19,10 +19,12 @@ from handlers.tournament import (
     handle_score_t1, handle_score_save, handle_tourn_reset, handle_tourn_page,
     _create_and_show_tournament,
 )
+from services.team_divider import _md
 from utils.keyboards import (
     main_menu_keyboard, players_remove_keyboard, players_strength_keyboard,
     strength_keyboard, timer_running_keyboard, timer_paused_keyboard,
-    teams_count_keyboard, after_divide_keyboard,
+    teams_count_keyboard, after_divide_keyboard, teams_action_keyboard,
+    tournament_rounds_keyboard, teams_rename_keyboard,
 )
 
 logger = logging.getLogger(__name__)
@@ -105,7 +107,7 @@ async def callback_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
             return
         try:
             msg = format_teams_message(teams, players)
-            await query.edit_message_text(msg, parse_mode="Markdown", reply_markup=main_menu_keyboard())
+            await query.edit_message_text(msg, parse_mode="Markdown", reply_markup=teams_action_keyboard())
         except Exception as e:
             logger.error("format_teams_message error: %s", e)
             await query.edit_message_text(
@@ -176,7 +178,45 @@ async def callback_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
                 reply_markup=main_menu_keyboard(),
             )
             return
-        await _create_and_show_tournament(query, chat_id, teams)
+        teams_str = " | ".join(_md(t["name"]) for t in teams)
+        await query.edit_message_text(
+            f"🏆 *Турнір*\nКоманди: {teams_str}\n\nСкільки турів?",
+            parse_mode="Markdown",
+            reply_markup=tournament_rounds_keyboard(),
+        )
+
+    elif data.startswith("tourn_rounds_"):
+        rounds = int(data.split("_")[2])
+        teams = db.get_teams(chat_id)
+        if len(teams) < 2:
+            await query.answer("Команди не знайдено.", show_alert=True)
+            return
+        await _create_and_show_tournament(query, chat_id, teams, rounds=rounds)
+
+    # ── Team rename ───────────────────────────────────────────────────────────
+    elif data == "rename_pick":
+        teams = db.get_teams(chat_id)
+        if not teams:
+            await query.answer("Команди не знайдено.", show_alert=True)
+            return
+        await query.edit_message_text(
+            "✏️ *Оберіть команду для перейменування:*",
+            parse_mode="Markdown",
+            reply_markup=teams_rename_keyboard(teams),
+        )
+
+    elif data.startswith("rename_"):
+        idx = int(data.split("_")[1])
+        teams = db.get_teams(chat_id)
+        if idx >= len(teams):
+            await query.answer("Команду не знайдено.", show_alert=True)
+            return
+        team_name = teams[idx]["name"]
+        context.chat_data["waiting_rename"] = team_name
+        await query.edit_message_text(
+            f"✏️ Введіть нову назву для *{_md(team_name)}*:\n_(або /cancel для скасування)_",
+            parse_mode="Markdown",
+        )
 
     elif data == "tourn_schedule":
         await handle_tourn_schedule(query, chat_id)

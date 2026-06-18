@@ -13,7 +13,7 @@ from services.tournament import (
     parse_score,
     parse_match_and_score,
 )
-from utils.keyboards import main_menu_keyboard
+from utils.keyboards import main_menu_keyboard, tournament_rounds_keyboard
 
 logger = logging.getLogger(__name__)
 
@@ -95,12 +95,17 @@ async def tournament_handler(update: Update, context: ContextTypes.DEFAULT_TYPE)
         )
         return
 
-    await _create_and_show_tournament(update.message, chat_id, teams)
+    team_names_str = " | ".join(t["name"] for t in teams)
+    await update.message.reply_text(
+        f"🏆 *Турнір*\nКоманди: {team_names_str}\n\nСкільки турів?",
+        parse_mode="Markdown",
+        reply_markup=tournament_rounds_keyboard(),
+    )
 
 
-async def _create_and_show_tournament(msg_or_query, chat_id: int, teams: list[dict]):
+async def _create_and_show_tournament(msg_or_query, chat_id: int, teams: list[dict], rounds: int = 1):
     team_names = [t["name"] for t in teams]
-    matches = generate_round_robin(team_names)
+    matches = generate_round_robin(team_names, rounds=rounds)
     db.save_tournament(matches, chat_id)
     saved = db.get_tournament(chat_id)
 

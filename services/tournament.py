@@ -8,18 +8,23 @@ from itertools import combinations
 logger = logging.getLogger(__name__)
 
 
-def generate_round_robin(team_names: list[str]) -> list[dict]:
-    return [
-        {
-            "match_order": i,
-            "team1_name": t1,
-            "team2_name": t2,
-            "team1_score": None,
-            "team2_score": None,
-            "played": 0,
-        }
-        for i, (t1, t2) in enumerate(combinations(team_names, 2), start=1)
-    ]
+def generate_round_robin(team_names: list[str], rounds: int = 1) -> list[dict]:
+    """Generate round-robin fixtures. rounds > 1 repeats the whole fixture list."""
+    base = list(combinations(team_names, 2))
+    matches = []
+    order = 1
+    for _ in range(max(1, rounds)):
+        for t1, t2 in base:
+            matches.append({
+                "match_order": order,
+                "team1_name": t1,
+                "team2_name": t2,
+                "team1_score": None,
+                "team2_score": None,
+                "played": 0,
+            })
+            order += 1
+    return matches
 
 
 def calculate_standings(team_names: list[str], matches: list[dict]) -> list[dict]:

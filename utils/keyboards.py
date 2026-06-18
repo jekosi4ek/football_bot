@@ -102,9 +102,40 @@ def teams_count_keyboard() -> InlineKeyboardMarkup:
 
 
 def after_divide_keyboard() -> InlineKeyboardMarkup:
-    """Shown after auto-divide — offers tournament and timer."""
+    """Shown after auto-divide — rename, tournament, timer."""
     return InlineKeyboardMarkup([
-        [InlineKeyboardButton("🏆 Створити турнір", callback_data="menu_tournament")],
-        [InlineKeyboardButton("⏱ Почати таймер",    callback_data="menu_start_match")],
-        [InlineKeyboardButton("🔙 Головне меню",     callback_data="back_main")],
+        [InlineKeyboardButton("✏️ Назви команд",     callback_data="rename_pick")],
+        [InlineKeyboardButton("🏆 Створити турнір",  callback_data="menu_tournament")],
+        [InlineKeyboardButton("⏱ Почати таймер",     callback_data="menu_start_match")],
+        [InlineKeyboardButton("🔙 Головне меню",      callback_data="back_main")],
     ])
+
+
+def teams_action_keyboard() -> InlineKeyboardMarkup:
+    """Shown when viewing existing teams."""
+    return InlineKeyboardMarkup([
+        [InlineKeyboardButton("✏️ Назви команд", callback_data="rename_pick")],
+        [
+            InlineKeyboardButton("🏆 Турнір",   callback_data="menu_tournament"),
+            InlineKeyboardButton("⏱ Таймер",    callback_data="menu_start_match"),
+        ],
+        [InlineKeyboardButton("🔙 Головне меню", callback_data="back_main")],
+    ])
+
+
+def tournament_rounds_keyboard() -> InlineKeyboardMarkup:
+    return InlineKeyboardMarkup([
+        [
+            InlineKeyboardButton("1 тур",  callback_data="tourn_rounds_1"),
+            InlineKeyboardButton("2 тури", callback_data="tourn_rounds_2"),
+            InlineKeyboardButton("3 тури", callback_data="tourn_rounds_3"),
+        ],
+        [InlineKeyboardButton("🔙 Скасувати", callback_data="back_main")],
+    ])
+
+
+def teams_rename_keyboard(teams: list[dict]) -> InlineKeyboardMarkup:
+    rows = [[InlineKeyboardButton(f"✏️ {t['name']}", callback_data=f"rename_{i}")]
+            for i, t in enumerate(teams)]
+    rows.append([InlineKeyboardButton("🔙 Назад", callback_data="menu_show_teams")])
+    return InlineKeyboardMarkup(rows)

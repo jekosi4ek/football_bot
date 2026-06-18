@@ -452,6 +452,24 @@ def update_match_score(match_id: int, team1_score: int, team2_score: int, chat_i
         conn.close()
 
 
+def rename_team(chat_id: int, old_name: str, new_name: str):
+    ph = _ph()
+    conn = get_connection()
+    try:
+        with conn:
+            if _is_pg():
+                with conn.cursor() as cur:
+                    cur.execute(f"UPDATE teams SET name={ph} WHERE chat_id={ph} AND name={ph}", (new_name, chat_id, old_name))
+                    cur.execute(f"UPDATE tournament_matches SET team1_name={ph} WHERE chat_id={ph} AND team1_name={ph}", (new_name, chat_id, old_name))
+                    cur.execute(f"UPDATE tournament_matches SET team2_name={ph} WHERE chat_id={ph} AND team2_name={ph}", (new_name, chat_id, old_name))
+            else:
+                conn.execute(f"UPDATE teams SET name={ph} WHERE chat_id={ph} AND name={ph}", (new_name, chat_id, old_name))
+                conn.execute(f"UPDATE tournament_matches SET team1_name={ph} WHERE chat_id={ph} AND team1_name={ph}", (new_name, chat_id, old_name))
+                conn.execute(f"UPDATE tournament_matches SET team2_name={ph} WHERE chat_id={ph} AND team2_name={ph}", (new_name, chat_id, old_name))
+    finally:
+        conn.close()
+
+
 def delete_tournament(chat_id: int):
     ph = _ph()
     conn = get_connection()
