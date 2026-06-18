@@ -20,14 +20,34 @@ logger = logging.getLogger(__name__)
 
 # ── Keyboard builders ─────────────────────────────────────────────────────────
 
-def _tournament_keyboard(matches: list[dict]) -> InlineKeyboardMarkup:
+_PAGE_SIZE = 6
+
+
+def _tournament_keyboard(matches: list[dict], page: int = 0) -> InlineKeyboardMarkup:
+    """Paginated match list: _PAGE_SIZE matches per page + nav + controls."""
+    total = len(matches)
+    total_pages = max(1, (total + _PAGE_SIZE - 1) // _PAGE_SIZE)
+    page = max(0, min(page, total_pages - 1))
+
+    start = page * _PAGE_SIZE
+    page_matches = matches[start: start + _PAGE_SIZE]
+
     rows = []
-    for m in matches:
+    for m in page_matches:
         if m.get("played") and m["team1_score"] is not None:
             label = f"✅ {m['match_order']}. {m['team1_name']} {m['team1_score']}:{m['team2_score']} {m['team2_name']}"
         else:
             label = f"⚽ {m['match_order']}. {m['team1_name']} vs {m['team2_name']}"
         rows.append([InlineKeyboardButton(label, callback_data=f"tourn_match_{m['id']}")])
+
+    if total_pages > 1:
+        nav = []
+        if page > 0:
+            nav.append(InlineKeyboardButton("◀️", callback_data=f"tourn_page_{page - 1}"))
+        nav.append(InlineKeyboardButton(f"{page + 1}/{total_pages}", callback_data="noop"))
+        if page < total_pages - 1:
+            nav.append(InlineKeyboardButton("▶️", callback_data=f"tourn_page_{page + 1}"))
+        rows.append(nav)
 
     rows.append([
         InlineKeyboardButton("🏆 Таблиця", callback_data="tourn_standings"),
@@ -35,6 +55,14 @@ def _tournament_keyboard(matches: list[dict]) -> InlineKeyboardMarkup:
     ])
     rows.append([InlineKeyboardButton("🔙 Головне меню", callback_data="back_main")])
     return InlineKeyboardMarkup(rows)
+
+
+def _page_for_match(matches: list[dict], match_id: int) -> int:
+    """Return the page number that contains the given match_id."""
+    for i, m in enumerate(matches):
+        if m["id"] == match_id:
+            return i // _PAGE_SIZE
+    return 0
 
 
 def _score_keyboard(match_id: int) -> InlineKeyboardMarkup:
@@ -189,6 +217,18 @@ async def handle_score_voice(update: Update, context: ContextTypes.DEFAULT_TYPE,
 
 # ── Callback handlers (called from callbacks.py) ──────────────────────────────
 
+async def handle_tourn_page(query, chat_id: int, page: int):
+    matches = db.get_tournament(chat_id)
+    if not matches:
+        await query.answer("Немає турніру.", show_alert=True)
+        return
+    await query.edit_message_text(
+        format_schedule(matches),
+        parse_mode="Markdown",
+        reply_markup=_tournament_keyboard(matches, page=page),
+    )
+
+
 async def handle_tourn_schedule(query, chat_id: int):
     matches = db.get_tournament(chat_id)
     if not matches:
@@ -258,10 +298,11 @@ async def handle_score_save(query, chat_id: int, match_id: int, t1_score: int, t
     teams = db.get_teams(chat_id)
     team_names = [t["name"] for t in teams]
     text = format_schedule(matches) + "\n\n" + format_standings(team_names, matches)
+    page = _page_for_match(matches, match_id)
     await query.edit_message_text(
         text,
         parse_mode="Markdown",
-        reply_markup=_tournament_keyboard(matches),
+        reply_markup=_tournament_keyboard(matches, page=page),
     )
 
 

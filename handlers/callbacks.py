@@ -16,7 +16,7 @@ from handlers.match import (
 )
 from handlers.tournament import (
     handle_tourn_schedule, handle_tourn_standings, handle_tourn_match,
-    handle_score_t1, handle_score_save, handle_tourn_reset,
+    handle_score_t1, handle_score_save, handle_tourn_reset, handle_tourn_page,
     _create_and_show_tournament,
 )
 from utils.keyboards import (
@@ -186,6 +186,13 @@ async def callback_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
     elif data == "tourn_reset":
         await handle_tourn_reset(query, chat_id)
+
+    elif data.startswith("tourn_page_"):
+        page = int(data.split("_")[2])
+        await handle_tourn_page(query, chat_id, page)
+
+    elif data == "noop":
+        pass  # page-counter button, do nothing
 
     elif data.startswith("tourn_match_"):
         match_id = int(data.split("_")[2])
