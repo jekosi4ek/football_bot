@@ -123,15 +123,18 @@ def teams_action_keyboard() -> InlineKeyboardMarkup:
     ])
 
 
+_ROUNDS_LABELS = ["1 тур", "2 тури", "3 тури", "4 тури", "5 турів",
+                  "6 турів", "7 турів", "8 турів", "9 турів"]
+
+
 def tournament_rounds_keyboard() -> InlineKeyboardMarkup:
-    return InlineKeyboardMarkup([
-        [
-            InlineKeyboardButton("1 тур",  callback_data="tourn_rounds_1"),
-            InlineKeyboardButton("2 тури", callback_data="tourn_rounds_2"),
-            InlineKeyboardButton("3 тури", callback_data="tourn_rounds_3"),
-        ],
-        [InlineKeyboardButton("🔙 Скасувати", callback_data="back_main")],
-    ])
+    buttons = [
+        InlineKeyboardButton(_ROUNDS_LABELS[i], callback_data=f"tourn_rounds_{i + 1}")
+        for i in range(9)
+    ]
+    rows = [buttons[0:3], buttons[3:6], buttons[6:9],
+            [InlineKeyboardButton("🔙 Скасувати", callback_data="back_main")]]
+    return InlineKeyboardMarkup(rows)
 
 
 def teams_rename_keyboard(teams: list[dict]) -> InlineKeyboardMarkup:
